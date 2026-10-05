@@ -68,6 +68,11 @@ textarea:focus,input:focus{border-color:var(--pri)}
 pre{background:var(--bg);border:1px solid var(--bd);border-radius:12px;padding:12px;overflow:auto;font-size:13px;line-height:1.5;margin:8px 0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .hint{font-size:13px;color:var(--mut)}
+.fbar>summary{cursor:pointer;font-weight:600;list-style:none;display:flex;align-items:center}
+.fbar>summary::-webkit-details-marker{display:none}
+.fbar>summary::after{content:"▾";margin-left:auto;color:var(--mut)}
+.fbar[open]>summary::after{content:"▴"}
+.fbar .actions .btn{flex:none}
 #toast{position:fixed;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);background:#222;color:#fff;padding:10px 18px;border-radius:99px;opacity:0;pointer-events:none;transition:.25s;z-index:20;max-width:90vw;font-size:14px}
 #toast.show{opacity:.95;transform:translateX(-50%)}
 </style>
@@ -82,6 +87,34 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const KEY='psy_test_v1';
 let DB={questions:[]}, practiceId=null, importTab='js';
 let browseFilter='all', browseSearch='', formCtx=null;
+const NONE='__none', PFKEY='psy_test_pf';
+let PF={school:'',qtype:''};
+try{const r=JSON.parse(localStorage.getItem(PFKEY));if(r&&typeof r==='object')PF={school:r.school||'',qtype:r.qtype||''};}catch(e){}
+const savePF=()=>{try{localStorage.setItem(PFKEY,JSON.stringify(PF));}catch(e){}};
+const schoolOf=q=>(q.kind==='past'&&q.school)?q.school:NONE;
+const qtOf=q=>q.qtype||NONE;
+const matchPF=(q,ignore)=>(ignore==='school'||!PF.school||schoolOf(q)===PF.school)&&(ignore==='qtype'||!PF.qtype||qtOf(q)===PF.qtype);
+function fixPF(){
+  if(PF.school&&!DB.questions.some(q=>schoolOf(q)===PF.school))PF.school='';
+  if(PF.qtype&&!DB.questions.some(q=>qtOf(q)===PF.qtype))PF.qtype='';
+}
+function filterBar(){
+  const un=unsaved();
+  const cnt=(arr,fn)=>{const m=new Map();arr.forEach(q=>{const k=fn(q);m.set(k,(m.get(k)||0)+1);});return m;};
+  const mS=cnt(un.filter(q=>matchPF(q,'school')),schoolOf), mQ=cnt(un.filter(q=>matchPF(q,'qtype')),qtOf);
+  const kS=[...new Set(DB.questions.map(schoolOf))], kQ=[...new Set(DB.questions.map(qtOf))];
+  const opts=(keys,m,sel,noneLabel)=>{
+    const sum=[...m.values()].reduce((a,b)=>a+b,0);
+    keys.sort((a,b)=>(m.get(b)||0)-(m.get(a)||0)||String(a).localeCompare(String(b),'zh-Hant'));
+    return `<option value="">全部（${sum}）</option>`+keys.map(k=>`<option value="${esc(k)}" ${k===sel?'selected':''}>${esc(k===NONE?noneLabel:k)}（${m.get(k)||0}）</option>`).join('');
+  };
+  const active=PF.school||PF.qtype;
+  return `<details class="card fbar" ${active?'open':''}><summary>篩選題目${active?'<span class="badge" style="margin-left:8px">使用中</span>':''}</summary>
+  <label class="f">學校</label><select id="fSchool">${opts(kS,mS,PF.school,'非考古題')}</select>
+  <label class="f">題型</label><select id="fQtype">${opts(kQ,mQ,PF.qtype,'未標示題型')}</select>
+  <div class="hint" style="margin-top:8px">括號內為尚未作答的題數</div>
+  ${active?`<div class="actions"><button class="btn ghost sm" id="fClear">清除篩選</button></div>`:''}</details>`;
+}
 
 /* ---------- 資料 ---------- */
 function load(){try{const r=localStorage.getItem(KEY);if(r){DB=JSON.parse(r);}}catch(e){}if(!DB||!Array.isArray(DB.questions))DB={questions:[]};}
@@ -107,12 +140,14 @@ const page=(title,back,body)=>`<header class="bar">${back?`<button class="back" 
 const empty=(icon,title,msg,go,label,pTitle,back)=>page(pTitle,back,`<div class="empty"><div class="big">${icon}</div><h2>${title}</h2><p>${msg}</p>${go?`<button class="btn" data-go="${go}">${label}</button>`:''}</div>`);
 
 function formHTML(q,mode){
-  const total=DB.questions.length, done=DB.questions.filter(x=>x.saved).length;
+  const filtered=mode==='practice'&&(PF.school||PF.qtype);
+  const pool=mode==='practice'?DB.questions.filter(x=>matchPF(x)):DB.questions;
+  const total=pool.length, done=pool.filter(x=>x.saved).length;
   const F=[['thought','解題思路'],['concept','重點概念'],['answer','回答'],['correct','正解']];
   const btns=mode==='practice'
     ?`<button class="btn ghost" id="skip">跳過</button><button class="btn" id="save">儲存</button>`
     :`<button class="btn ghost" id="cancel">返回</button><button class="btn" id="save">${q.saved?'儲存':'儲存'}</button>`;
-  return `<div class="progress"><span>已作答 ${done} / ${total}</span><span>${total?Math.round(done/total*100):0}%</span></div>
+  return `<div class="progress"><span>已作答 ${done} / ${total}${filtered?'（篩選中）':''}</span><span>${total?Math.round(done/total*100):0}%</span></div>
   <div class="pbar"><i style="width:${total?done/total*100:0}%"></i></div>
   <div class="card"><div class="head"><div>${headHTML(q)}</div><button class="star ${q.star?'on':''}" id="star" aria-label="星號">${q.star?'★':'☆'}</button></div>
   <div class="qtext">${esc(q.text)}</div></div>
@@ -132,13 +167,21 @@ function view_home(){
   <button class="menu" data-go="browse"><span class="ic">📚</span><span>瀏覽全部題目<span class="sub">已儲存與未儲存</span></span>${b(total)}</button>`;
 }
 
+const practiceList=()=>unsaved().filter(q=>matchPF(q));
 function view_practice(){
   if(!DB.questions.length)return empty('📭','尚未有題目！','還沒有任何題目，請先匯入。','import','前往匯入題目','練習新題目','home');
-  const list=unsaved();
-  if(!list.length)return empty('🎉','目前沒有新題目！','所有題目都已作答並儲存，可以去複習了。','review','前往複習舊題目','練習新題目','home');
-  let q=DB.questions.find(x=>x.id===practiceId&&!x.saved)||list[0];
+  fixPF();
+  const list=practiceList();
+  if(!list.length){
+    const anyNew=unsaved().length>0;
+    const body=anyNew
+      ?`<div class="empty"><div class="big">🔎</div><h2>目前沒有新題目！</h2><p>這個篩選條件下的題目都已作答，可以換個學校或題型，或清除篩選。</p><button class="btn" id="fClear">清除篩選</button></div>`
+      :`<div class="empty"><div class="big">🎉</div><h2>目前沒有新題目！</h2><p>所有題目都已作答並儲存，可以去複習了。</p><button class="btn" data-go="review">前往複習舊題目</button></div>`;
+    return page('練習新題目','home',(anyNew?filterBar():'')+body);
+  }
+  let q=list.find(x=>x.id===practiceId)||list[0];
   practiceId=q.id; formCtx={q,mode:'practice'};
-  return page('練習新題目','home',formHTML(q,'practice'));
+  return page('練習新題目','home',filterBar()+formHTML(q,'practice'));
 }
 
 function itemRow(q,extra){
@@ -230,7 +273,7 @@ function saveQ(q,mode){
   else go(mode==='review'?'review':'browse');
 }
 function skip(q){
-  const list=unsaved();
+  const list=practiceList();
   if(list.length<=1){toast('這是最後一題了');return;}
   const i=list.findIndex(x=>x.id===q.id);
   practiceId=list[(i+1)%list.length].id;render();
@@ -273,7 +316,8 @@ function addMany(arr){
 async function importFiles(files){
   let tot={add:0,dup:0,bad:0};
   for(const f of files){
-    const txt=await f.text();let arr=[];
+    let txt=await f.text();let arr=[];
+    txt=txt.replace(/^\s*```.*$/gm,'').replace(/\[cite:[^\]]*\]/g,'');
     try{const j=JSON.parse(txt);arr=Array.isArray(j)?j:(Array.isArray(j.questions)?j.questions:[]);}
     catch(_){try{new Function('PSY_IMPORT',txt)(a=>{if(Array.isArray(a))arr=arr.concat(a);});}catch(e){toast(f.name+' 讀取失敗：'+e.message);return;}}
     const r=addMany(arr);tot.add+=r.add;tot.dup+=r.dup;tot.bad+=r.bad;
@@ -292,6 +336,7 @@ document.addEventListener('click',e=>{
   if(t.dataset.bf){browseFilter=t.dataset.bf;fillBrowse();return;}
   if(t.dataset.it){importTab=t.dataset.it;render();return;}
   if(t.dataset.k){manualKind=t.dataset.k;$('#kPast').classList.toggle('on',manualKind==='past');$('#kNorm').classList.toggle('on',manualKind==='normal');$('#pastF').style.display=manualKind==='past'?'':'none';return;}
+  if(t.id==='fClear'){PF={school:'',qtype:''};savePF();practiceId=null;render();return;}
   if(t.id==='doImport'){const f=$('#file').files;if(!f.length){toast('請先選擇檔案');return;}importFiles([...f]);return;}
   if(t.id==='copySample'){navigator.clipboard&&navigator.clipboard.writeText(SAMPLE).then(()=>toast('已複製範例'),()=>toast('複製失敗，請手動選取'));return;}
   if(t.id==='dlSample'){dl('PSY_TEST_題目範例.js',SAMPLE);return;}
@@ -303,6 +348,11 @@ document.addEventListener('click',e=>{
   }
 });
 function saveQuick(q){const now=Date.now();q.saved=true;q.savedAt=now;q.updatedAt=now;persist();toast('已儲存');fillBrowse();}
+document.addEventListener('change',e=>{
+  if(e.target.id==='fSchool'||e.target.id==='fQtype'){
+    PF.school=$('#fSchool').value;PF.qtype=$('#fQtype').value;savePF();practiceId=null;render();
+  }
+});
 document.addEventListener('input',e=>{if(e.target.id==='search'){browseSearch=e.target.value;fillBrowse();}});
 
 /* ---------- 啟動 ---------- */
