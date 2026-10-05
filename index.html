@@ -48,6 +48,7 @@ button{font:inherit;color:inherit}
 .head{display:flex;gap:8px;align-items:flex-start;justify-content:space-between;font-size:14px;color:var(--mut)}
 .tag{display:inline-block;font-size:12px;border-radius:6px;padding:1px 8px;background:var(--bd);color:var(--fg);margin-right:4px}
 .tag.past{background:var(--soft);color:var(--pri)}
+.tag.sub{background:var(--pri);color:var(--pri-fg)}
 .star{border:0;background:none;font-size:28px;line-height:1;cursor:pointer;color:var(--mut);padding:0 4px}
 .star.on{color:var(--star)}
 .qtext{white-space:pre-wrap;font-size:17px;margin-top:10px}
@@ -88,28 +89,31 @@ const KEY='psy_test_v1';
 let DB={questions:[]}, practiceId=null, importTab='js';
 let browseFilter='all', browseSearch='', formCtx=null;
 const NONE='__none', PFKEY='psy_test_pf';
-let PF={school:'',qtype:''};
-try{const r=JSON.parse(localStorage.getItem(PFKEY));if(r&&typeof r==='object')PF={school:r.school||'',qtype:r.qtype||''};}catch(e){}
+let PF={subject:'',school:'',qtype:''};
+try{const r=JSON.parse(localStorage.getItem(PFKEY));if(r&&typeof r==='object')PF={subject:r.subject||'',school:r.school||'',qtype:r.qtype||''};}catch(e){}
 const savePF=()=>{try{localStorage.setItem(PFKEY,JSON.stringify(PF));}catch(e){}};
+const subjOf=q=>q.subject||NONE;
 const schoolOf=q=>(q.kind==='past'&&q.school)?q.school:NONE;
 const qtOf=q=>q.qtype||NONE;
-const matchPF=(q,ignore)=>(ignore==='school'||!PF.school||schoolOf(q)===PF.school)&&(ignore==='qtype'||!PF.qtype||qtOf(q)===PF.qtype);
+const matchPF=(q,ignore)=>(ignore==='subject'||!PF.subject||subjOf(q)===PF.subject)&&(ignore==='school'||!PF.school||schoolOf(q)===PF.school)&&(ignore==='qtype'||!PF.qtype||qtOf(q)===PF.qtype);
 function fixPF(){
+  if(PF.subject&&!DB.questions.some(q=>subjOf(q)===PF.subject))PF.subject='';
   if(PF.school&&!DB.questions.some(q=>schoolOf(q)===PF.school))PF.school='';
   if(PF.qtype&&!DB.questions.some(q=>qtOf(q)===PF.qtype))PF.qtype='';
 }
 function filterBar(){
   const un=unsaved();
   const cnt=(arr,fn)=>{const m=new Map();arr.forEach(q=>{const k=fn(q);m.set(k,(m.get(k)||0)+1);});return m;};
-  const mS=cnt(un.filter(q=>matchPF(q,'school')),schoolOf), mQ=cnt(un.filter(q=>matchPF(q,'qtype')),qtOf);
-  const kS=[...new Set(DB.questions.map(schoolOf))], kQ=[...new Set(DB.questions.map(qtOf))];
+  const mB=cnt(un.filter(q=>matchPF(q,'subject')),subjOf), mS=cnt(un.filter(q=>matchPF(q,'school')),schoolOf), mQ=cnt(un.filter(q=>matchPF(q,'qtype')),qtOf);
+  const kB=[...new Set(DB.questions.map(subjOf))], kS=[...new Set(DB.questions.map(schoolOf))], kQ=[...new Set(DB.questions.map(qtOf))];
   const opts=(keys,m,sel,noneLabel)=>{
     const sum=[...m.values()].reduce((a,b)=>a+b,0);
     keys.sort((a,b)=>(m.get(b)||0)-(m.get(a)||0)||String(a).localeCompare(String(b),'zh-Hant'));
     return `<option value="">全部（${sum}）</option>`+keys.map(k=>`<option value="${esc(k)}" ${k===sel?'selected':''}>${esc(k===NONE?noneLabel:k)}（${m.get(k)||0}）</option>`).join('');
   };
-  const active=PF.school||PF.qtype;
+  const active=PF.subject||PF.school||PF.qtype;
   return `<details class="card fbar" ${active?'open':''}><summary>篩選題目${active?'<span class="badge" style="margin-left:8px">使用中</span>':''}</summary>
+  <label class="f">考科</label><select id="fSubject">${opts(kB,mB,PF.subject,'未設定考科')}</select>
   <label class="f">學校</label><select id="fSchool">${opts(kS,mS,PF.school,'非考古題')}</select>
   <label class="f">題型</label><select id="fQtype">${opts(kQ,mQ,PF.qtype,'未標示題型')}</select>
   <div class="hint" style="margin-top:8px">括號內為尚未作答的題數</div>
@@ -117,7 +121,7 @@ function filterBar(){
 }
 
 /* ---------- 資料 ---------- */
-function load(){try{const r=localStorage.getItem(KEY);if(r){DB=JSON.parse(r);}}catch(e){}if(!DB||!Array.isArray(DB.questions))DB={questions:[]};}
+function load(){try{const r=localStorage.getItem(KEY);if(r){DB=JSON.parse(r);}}catch(e){}if(!DB||!Array.isArray(DB.questions))DB={questions:[]};DB.questions.forEach(q=>{if(q.subject==null)q.subject='';});}
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(DB));}catch(e){toast('儲存失敗：瀏覽器空間不足');}}
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const unsaved=()=>DB.questions.filter(q=>!q.saved);
@@ -128,19 +132,20 @@ function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show'
 
 /* ---------- 共用元件 ---------- */
 function headHTML(q){
+  const sub=q.subject?`<span class="tag sub">${esc(q.subject)}</span>`:'';
   if(q.kind==='past'){
     const yr=q.year?(/年/.test(q.year)?q.year:q.year+'年'):'';
     const sc=(q.score!==''&&q.score!=null)?(/分/.test(q.score)?q.score:q.score+'分'):'';
     const parts=[yr,q.school,q.qtype,sc].filter(Boolean).map(esc).join(' / ');
-    return `<span class="tag past">考古題</span>${parts}`;
+    return `<span class="tag past">考古題</span>${sub}${parts}`;
   }
-  return `<span class="tag">非考古題</span>${esc(q.qtype||'')}`;
+  return `<span class="tag">非考古題</span>${sub}${esc(q.qtype||'')}`;
 }
 const page=(title,back,body)=>`<header class="bar">${back?`<button class="back" data-go="${back}" aria-label="返回">‹</button>`:''}<h1>${esc(title)}</h1></header>${body}`;
 const empty=(icon,title,msg,go,label,pTitle,back)=>page(pTitle,back,`<div class="empty"><div class="big">${icon}</div><h2>${title}</h2><p>${msg}</p>${go?`<button class="btn" data-go="${go}">${label}</button>`:''}</div>`);
 
 function formHTML(q,mode){
-  const filtered=mode==='practice'&&(PF.school||PF.qtype);
+  const filtered=mode==='practice'&&(PF.subject||PF.school||PF.qtype);
   const pool=mode==='practice'?DB.questions.filter(x=>matchPF(x)):DB.questions;
   const total=pool.length, done=pool.filter(x=>x.saved).length;
   const F=[['thought','解題思路'],['concept','重點概念'],['answer','回答'],['correct','正解']];
@@ -150,7 +155,7 @@ function formHTML(q,mode){
   return `<div class="progress"><span>已作答 ${done} / ${total}${filtered?'（篩選中）':''}</span><span>${total?Math.round(done/total*100):0}%</span></div>
   <div class="pbar"><i style="width:${total?done/total*100:0}%"></i></div>
   <div class="card"><div class="head"><div>${headHTML(q)}</div><button class="star ${q.star?'on':''}" id="star" aria-label="星號">${q.star?'★':'☆'}</button></div>
-  <div class="qtext">${esc(q.text)}</div></div>
+  <div class="qtext">${esc(q.text)}</div><div style="margin-top:12px"><button class="btn ghost sm" id="editInfo">✎ 編輯題目資訊</button></div></div>
   ${F.map(([k,l])=>`<label class="f">${l}（選填）</label><textarea data-f="${k}" placeholder="${l}">${esc(q[k]||'')}</textarea>`).join('')}
   <div class="actions">${btns}</div>
   ${mode!=='practice'?`<div style="text-align:center;margin-top:18px"><button class="btn danger sm" id="del">刪除這題</button></div>`:''}`;
@@ -175,7 +180,7 @@ function view_practice(){
   if(!list.length){
     const anyNew=unsaved().length>0;
     const body=anyNew
-      ?`<div class="empty"><div class="big">🔎</div><h2>目前沒有新題目！</h2><p>這個篩選條件下的題目都已作答，可以換個學校或題型，或清除篩選。</p><button class="btn" id="fClear">清除篩選</button></div>`
+      ?`<div class="empty"><div class="big">🔎</div><h2>目前沒有新題目！</h2><p>這個篩選條件下的題目都已作答，可以換個考科、學校或題型，或清除篩選。</p><button class="btn" id="fClear">清除篩選</button></div>`
       :`<div class="empty"><div class="big">🎉</div><h2>目前沒有新題目！</h2><p>所有題目都已作答並儲存，可以去複習了。</p><button class="btn" data-go="review">前往複習舊題目</button></div>`;
     return page('練習新題目','home',(anyNew?filterBar():'')+body);
   }
@@ -184,6 +189,21 @@ function view_practice(){
   return page('練習新題目','home',filterBar()+formHTML(q,'practice'));
 }
 
+let editFrom='browse', editKind='past';
+function view_edit(id){
+  const q=getQ(id); if(!q)return view_browse();
+  editKind=q.kind==='past'?'past':'normal';const past=editKind==='past';
+  const dlist=(i,arr)=>`<datalist id="${i}">${[...new Set(arr.filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'zh-Hant')).map(x=>`<option value="${esc(x)}">`).join('')}</datalist>`;
+  return page('編輯題目資訊',editFrom,`<div class="card">
+  <div class="tabs"><button class="tab ${past?'on':''}" id="ekPast" data-ek="past">考古題</button><button class="tab ${past?'':'on'}" id="ekNorm" data-ek="normal">非考古題</button></div>
+  <label class="f" style="margin-top:0">考科</label><input id="e_subject" list="dl_subject" value="${esc(q.subject)}" placeholder="例：心理測驗與統計">
+  <div id="e_pastF" style="${past?'':'display:none'}"><div class="grid2"><div><label class="f">年分</label><input id="e_year" inputmode="numeric" value="${esc(q.year)}" placeholder="例：112"></div><div><label class="f">分數</label><input id="e_score" inputmode="decimal" value="${esc(q.score)}" placeholder="例：25"></div></div>
+  <label class="f">校名</label><input id="e_school" list="dl_school" value="${esc(q.school)}" placeholder="例：國立政治大學輔諮碩"></div>
+  <label class="f">題型</label><input id="e_qtype" list="dl_qtype" value="${esc(q.qtype)}" placeholder="例：申論題">
+  <label class="f">題目內容</label><textarea id="e_text">${esc(q.text)}</textarea>
+  ${dlist('dl_subject',DB.questions.map(x=>x.subject))}${dlist('dl_school',DB.questions.map(x=>x.school))}${dlist('dl_qtype',DB.questions.map(x=>x.qtype))}
+  <div class="actions"><button class="btn ghost" data-go="${esc(editFrom)}">取消</button><button class="btn" id="saveEdit" data-id="${q.id}">儲存修改</button></div></div>`);
+}
 function itemRow(q,extra){
   const st=q.saved?`<span class="ok">已儲存</span>`:`<span>未儲存</span>`;
   return `<div class="row" data-open="${q.id}"><div class="head"><div>${headHTML(q)}</div><span style="color:${q.star?'var(--star)':'var(--mut)'}">${q.star?'★':''}</span></div><div class="t">${esc(q.text)}</div><div class="meta">${st}<span class="sp"></span>${extra||''}</div></div>`;
@@ -212,9 +232,10 @@ function view_import(){
     <div class="card"><b>題目檔範例</b>
     <pre id="sample">${esc(SAMPLE)}</pre>
     <div class="actions"><button class="btn ghost" id="copySample">複製範例</button><button class="btn ghost" id="dlSample">下載範例檔</button></div>
-    <p class="hint">欄位：type（past＝考古題／normal＝非考古題，省略時有年分或校名就視為考古題）、year、school、qtype、score、question（必填）。也可選填 correct（正解）、star（true／false）。中文欄位名（年分、校名、題型、分數、題目）同樣可用。</p></div>`;
+    <p class="hint">欄位：type（past＝考古題／normal＝非考古題，省略時有年分或校名就視為考古題）、subject（考科）、year、school、qtype、score、question（必填）。也可選填 correct（正解）、star（true／false）。中文欄位名（考科、年分、校名、題型、分數、題目）同樣可用。重複的題目若原本沒有考科而檔案裡有，會自動補上考科。</p></div>`;
   }else{
     body=`<div class="card"><div class="tabs"><button class="tab on" id="kPast" data-k="past">考古題</button><button class="tab" id="kNorm" data-k="normal">非考古題</button></div>
+    <label class="f" style="margin-top:0">考科</label><input id="m_subject" list="dl_msub" placeholder="例：心理測驗與統計"><datalist id="dl_msub">${[...new Set(DB.questions.map(x=>x.subject).filter(Boolean))].map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
     <div id="pastF"><div class="grid2"><div><label class="f">年分</label><input id="m_year" inputmode="numeric" placeholder="例：112"></div><div><label class="f">分數</label><input id="m_score" inputmode="decimal" placeholder="例：25"></div></div>
     <label class="f">校名</label><input id="m_school" placeholder="例：台大心理所"></div>
     <label class="f">題型</label><input id="m_qtype" list="qtypes" placeholder="例：申論題"><datalist id="qtypes"><option>選擇題</option><option>申論題</option><option>名詞解釋</option><option>簡答題</option><option>是非題</option><option>計算題</option></datalist>
@@ -225,15 +246,23 @@ function view_import(){
 }
 
 function view_browse(){
-  return page('瀏覽全部題目','home',`<input id="search" placeholder="搜尋題目、校名、題型…" value="${esc(browseSearch)}" style="margin-bottom:10px">
-  <div class="tabs" id="ftabs"></div><div id="blist"></div>`);
+  const subs=[...new Set(DB.questions.map(x=>x.subject).filter(Boolean))];
+  return page('瀏覽全部題目','home',`<input id="search" placeholder="搜尋題目、考科、校名、題型…" value="${esc(browseSearch)}" style="margin-bottom:10px">
+  <div class="tabs" id="ftabs"></div>
+  <details class="card fbar"><summary>批次設定考科</summary>
+  <p class="hint">先用上方的搜尋與分類縮小列表（例如搜尋校名），再把目前列表的題目一次設定成同一個考科。</p>
+  <input id="bulkSubject" list="dl_bulk" placeholder="輸入考科（留空＝清除考科）"><datalist id="dl_bulk">${subs.map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
+  <div class="actions"><button class="btn" id="bulkApply">套用到目前列表（<span id="bulkN">0</span> 題）</button></div></details>
+  <div id="blist"></div>`);
 }
+let browseList=[];
 function fillBrowse(){
   const all=DB.questions, s=browseSearch.trim().toLowerCase();
-  const F={all:['全部',all.length],new:['未儲存',all.filter(q=>!q.saved).length],saved:['已儲存',all.filter(q=>q.saved).length],star:['星號',all.filter(q=>q.star).length]};
+  const F={all:['全部',all.length],new:['未儲存',all.filter(q=>!q.saved).length],saved:['已儲存',all.filter(q=>q.saved).length],star:['星號',all.filter(q=>q.star).length],nosub:['未設考科',all.filter(q=>!q.subject).length]};
   $('#ftabs').innerHTML=Object.entries(F).map(([k,[l,n]])=>`<button class="tab ${browseFilter===k?'on':''}" data-bf="${k}">${l} ${n}</button>`).join('');
-  let list=all.filter(q=>browseFilter==='all'||(browseFilter==='new'&&!q.saved)||(browseFilter==='saved'&&q.saved)||(browseFilter==='star'&&q.star));
-  if(s)list=list.filter(q=>[q.text,q.school,q.qtype,q.year,q.thought,q.concept,q.answer,q.correct].join(' ').toLowerCase().includes(s));
+  let list=all.filter(q=>browseFilter==='all'||(browseFilter==='new'&&!q.saved)||(browseFilter==='saved'&&q.saved)||(browseFilter==='star'&&q.star)||(browseFilter==='nosub'&&!q.subject));
+  if(s)list=list.filter(q=>[q.text,q.subject,q.school,q.qtype,q.year,q.thought,q.concept,q.answer,q.correct].join(' ').toLowerCase().includes(s));
+  browseList=list;const bn=$('#bulkN');if(bn)bn.textContent=list.length;
   $('#blist').innerHTML=list.length?list.map(q=>itemRow(q,q.saved?'':`<button class="btn sm" data-qs="${q.id}">儲存</button>`)).join(''):`<div class="empty"><div class="big">${all.length?'🔍':'📭'}</div><h2>${all.length?'沒有符合的題目':'尚未有題目！'}</h2></div>`;
 }
 function view_q(id){
@@ -247,11 +276,12 @@ function go(h){if(location.hash==='#/'+h)render();else location.hash='#/'+h;}
 function render(){
   const [p,id]=(location.hash.replace(/^#\/?/,'')||'home').split('/');
   formCtx=null;
-  const V={home:view_home,practice:view_practice,review:view_review,r:()=>view_r(id),import:view_import,browse:view_browse,q:()=>view_q(id)};
+  const V={home:view_home,practice:view_practice,review:view_review,r:()=>view_r(id),import:view_import,browse:view_browse,q:()=>view_q(id),edit:()=>view_edit(id)};
   $('#app').innerHTML=(V[p]||view_home)();
   window.scrollTo(0,0);
   if(p==='browse')fillBrowse();
   if(formCtx)bindForm(formCtx);
+  if(p==='edit')document.querySelectorAll('textarea').forEach(t=>{t.style.height='auto';t.style.height=Math.max(120,t.scrollHeight+2)+'px';});
 }
 window.addEventListener('hashchange',render);
 
@@ -261,6 +291,7 @@ function bindForm({q,mode}){
   document.querySelectorAll('textarea').forEach(t=>{const fit=()=>{t.style.height='auto';t.style.height=Math.max(84,t.scrollHeight+2)+'px';};t.addEventListener('input',fit);fit();});
   $('#star').onclick=e=>{q.star=!q.star;persist();e.currentTarget.classList.toggle('on',q.star);e.currentTarget.textContent=q.star?'★':'☆';};
   $('#save').onclick=()=>saveQ(q,mode);
+  const ei=$('#editInfo');if(ei)ei.onclick=()=>{collect(q);editFrom=location.hash.replace(/^#\/?/,'')||'practice';go('edit/'+q.id);};
   const sk=$('#skip');if(sk)sk.onclick=()=>skip(q);
   const ca=$('#cancel');if(ca)ca.onclick=()=>go(mode==='review'?'review':'browse');
   const de=$('#del');if(de)de.onclick=()=>{if(confirm('確定刪除這題？此動作無法復原。')){DB.questions=DB.questions.filter(x=>x.id!==q.id);persist();toast('已刪除');go(mode==='review'?'review':'browse');}};
@@ -284,6 +315,7 @@ const SAMPLE=`// PSY_TEST 題目檔：把題目放進陣列，交給 PSY_IMPORT 
 PSY_IMPORT([
   {
     type: "past",            // past＝考古題
+    subject: "心理測驗與統計", // 考科（選填）
     year: 112,
     school: "台大心理所",
     qtype: "申論題",
@@ -300,29 +332,31 @@ function norm(o){
   if(!o||typeof o!=='object')return null;
   const g=(...k)=>{for(const x of k)if(o[x]!=null&&o[x]!=='')return o[x];return '';};
   const text=String(g('question','text','題目')).trim();if(!text)return null;
-  const year=String(g('year','年分')),school=String(g('school','校名')),score=String(g('score','分數'));
+  const subject=String(g('subject','考科')),year=String(g('year','年分')),school=String(g('school','校名')),score=String(g('score','分數'));
   const t=String(g('type','kind','類型')).toLowerCase();
   const past=t?/past|exam|考古/.test(t):!!(year||school||score);
   const now=Date.now();
-  return {id:uid(),kind:past?'past':'normal',year:past?year:'',school:past?school:'',score:past?score:'',qtype:String(g('qtype','題型')),text,
+  return {id:uid(),kind:past?'past':'normal',subject,year:past?year:'',school:past?school:'',score:past?score:'',qtype:String(g('qtype','題型')),text,
     saved:false,star:g('star','星號')===true,thought:'',concept:'',answer:String(g('answer','回答')),correct:String(g('correct','正解')),createdAt:now};
 }
 const dupKey=q=>[q.kind,q.year,q.school,q.qtype,q.text].join('|');
 function addMany(arr){
-  const keys=new Set(DB.questions.map(dupKey));let add=0,dup=0,bad=0;
-  for(const o of arr){const q=norm(o);if(!q){bad++;continue;}const k=dupKey(q);if(keys.has(k)){dup++;continue;}keys.add(k);DB.questions.push(q);add++;}
-  persist();return {add,dup,bad};
+  const map=new Map(DB.questions.map(q=>[dupKey(q),q]));let add=0,dup=0,bad=0,upd=0;
+  for(const o of arr){const q=norm(o);if(!q){bad++;continue;}const k=dupKey(q),ex=map.get(k);
+    if(ex){dup++;if(!ex.subject&&q.subject){ex.subject=q.subject;upd++;}continue;}
+    map.set(k,q);DB.questions.push(q);add++;}
+  persist();return {add,dup,bad,upd};
 }
 async function importFiles(files){
-  let tot={add:0,dup:0,bad:0};
+  let tot={add:0,dup:0,bad:0,upd:0};
   for(const f of files){
     let txt=await f.text();let arr=[];
     txt=txt.replace(/^\s*```.*$/gm,'').replace(/\[cite:[^\]]*\]/g,'');
     try{const j=JSON.parse(txt);arr=Array.isArray(j)?j:(Array.isArray(j.questions)?j.questions:[]);}
     catch(_){try{new Function('PSY_IMPORT',txt)(a=>{if(Array.isArray(a))arr=arr.concat(a);});}catch(e){toast(f.name+' 讀取失敗：'+e.message);return;}}
-    const r=addMany(arr);tot.add+=r.add;tot.dup+=r.dup;tot.bad+=r.bad;
+    const r=addMany(arr);tot.add+=r.add;tot.dup+=r.dup;tot.bad+=r.bad;tot.upd+=r.upd;
   }
-  alert(`匯入完成\n新增：${tot.add} 題\n重複略過：${tot.dup} 題\n格式不符：${tot.bad} 題`);
+  alert(`匯入完成\n新增：${tot.add} 題\n重複略過：${tot.dup} 題${tot.upd?`（其中 ${tot.upd} 題補上了考科）`:''}\n格式不符：${tot.bad} 題`);
 }
 const dl=(name,text)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/javascript'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};
 
@@ -336,21 +370,35 @@ document.addEventListener('click',e=>{
   if(t.dataset.bf){browseFilter=t.dataset.bf;fillBrowse();return;}
   if(t.dataset.it){importTab=t.dataset.it;render();return;}
   if(t.dataset.k){manualKind=t.dataset.k;$('#kPast').classList.toggle('on',manualKind==='past');$('#kNorm').classList.toggle('on',manualKind==='normal');$('#pastF').style.display=manualKind==='past'?'':'none';return;}
-  if(t.id==='fClear'){PF={school:'',qtype:''};savePF();practiceId=null;render();return;}
+  if(t.id==='fClear'){PF={subject:'',school:'',qtype:''};savePF();practiceId=null;render();return;}
+  if(t.dataset.ek){editKind=t.dataset.ek;$('#ekPast').classList.toggle('on',editKind==='past');$('#ekNorm').classList.toggle('on',editKind==='normal');$('#e_pastF').style.display=editKind==='past'?'':'none';return;}
+  if(t.id==='saveEdit'){
+    const q=getQ(t.dataset.id);if(!q)return;
+    const text=$('#e_text').value.trim();if(!text){toast('題目內容不能是空的');return;}
+    q.kind=editKind;q.subject=$('#e_subject').value.trim();q.qtype=$('#e_qtype').value.trim();q.text=text;
+    if(editKind==='past'){q.year=$('#e_year').value.trim();q.school=$('#e_school').value.trim();q.score=$('#e_score').value.trim();}
+    q.updatedAt=Date.now();persist();toast('已更新題目資訊');go(editFrom);return;
+  }
+  if(t.id==='bulkApply'){
+    const n=browseList.length;if(!n){toast('目前列表沒有題目');return;}
+    const v=$('#bulkSubject').value.trim();
+    if(!confirm(v?`將目前列表的 ${n} 題考科設為「${v}」？`:`清除目前列表 ${n} 題的考科？`))return;
+    browseList.forEach(q=>{q.subject=v;q.updatedAt=Date.now();});persist();toast(`已更新 ${n} 題`);fillBrowse();return;
+  }
   if(t.id==='doImport'){const f=$('#file').files;if(!f.length){toast('請先選擇檔案');return;}importFiles([...f]);return;}
   if(t.id==='copySample'){navigator.clipboard&&navigator.clipboard.writeText(SAMPLE).then(()=>toast('已複製範例'),()=>toast('複製失敗，請手動選取'));return;}
   if(t.id==='dlSample'){dl('PSY_TEST_題目範例.js',SAMPLE);return;}
   if(t.id==='addManual'){
     const text=$('#m_text').value.trim();if(!text){toast('請輸入題目內容');return;}
-    const o={type:manualKind,qtype:$('#m_qtype').value.trim(),question:text};
+    const o={type:manualKind,subject:$('#m_subject').value.trim(),qtype:$('#m_qtype').value.trim(),question:text};
     if(manualKind==='past'){o.year=$('#m_year').value.trim();o.school=$('#m_school').value.trim();o.score=$('#m_score').value.trim();}
     const r=addMany([o]);toast(r.add?'已新增題目':'此題目已存在');if(r.add)$('#m_text').value='';return;
   }
 });
 function saveQuick(q){const now=Date.now();q.saved=true;q.savedAt=now;q.updatedAt=now;persist();toast('已儲存');fillBrowse();}
 document.addEventListener('change',e=>{
-  if(e.target.id==='fSchool'||e.target.id==='fQtype'){
-    PF.school=$('#fSchool').value;PF.qtype=$('#fQtype').value;savePF();practiceId=null;render();
+  if(e.target.id==='fSubject'||e.target.id==='fSchool'||e.target.id==='fQtype'){
+    PF.subject=$('#fSubject').value;PF.school=$('#fSchool').value;PF.qtype=$('#fQtype').value;savePF();practiceId=null;render();
   }
 });
 document.addEventListener('input',e=>{if(e.target.id==='search'){browseSearch=e.target.value;fillBrowse();}});
