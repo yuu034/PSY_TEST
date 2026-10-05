@@ -168,7 +168,7 @@ function view_home(){
   return `<div class="hero"><h1>PSY_TEST</h1><p>心理學題庫練習與複習</p></div>
   <button class="menu" data-go="practice"><span class="ic">✏️</span><span>練習新題目<span class="sub">尚未作答的題目</span></span>${b(nNew)}</button>
   <button class="menu" data-go="review"><span class="ic">🔁</span><span>複習舊題目<span class="sub">已儲存的題目</span></span>${b(nDue)}</button>
-  <button class="menu" data-go="import"><span class="ic">📥</span><span>匯入題目<span class="sub">JS 檔或手動輸入</span></span></button>
+  <button class="menu" data-go="import"><span class="ic">📥</span><span>匯入題目<span class="sub">JS 檔、手動輸入、匯出備份</span></span></button>
   <button class="menu" data-go="browse"><span class="ic">📚</span><span>瀏覽全部題目<span class="sub">已儲存與未儲存</span></span>${b(total)}</button>`;
 }
 
@@ -223,16 +223,30 @@ function view_r(id){
 }
 
 function view_import(){
-  const tabs=`<div class="tabs"><button class="tab ${importTab==='js'?'on':''}" data-it="js">JS 檔匯入</button><button class="tab ${importTab==='manual'?'on':''}" data-it="manual">手動匯入</button></div>`;
+  const tabs=`<div class="tabs"><button class="tab ${importTab==='js'?'on':''}" data-it="js">JS 檔匯入</button><button class="tab ${importTab==='manual'?'on':''}" data-it="manual">手動匯入</button><button class="tab ${importTab==='export'?'on':''}" data-it="export">匯出備份</button></div>`;
   let body;
   if(importTab==='js'){
-    body=`<div class="card"><b>選擇題目檔</b><p class="hint">支援 .js（內容呼叫 PSY_IMPORT）或純 JSON 陣列，可一次選多個檔案。重複的題目會自動略過。</p>
+    body=`<div class="card"><b>選擇題目檔</b><p class="hint">支援 .js（內容呼叫 PSY_IMPORT）、.json，以及本 App 匯出的完整備份檔，可一次選多個檔案。重複的題目會自動略過；匯入備份時會還原作答、星號與考科。</p>
     <input type="file" id="file" accept=".js,.json,.txt" multiple>
     <div class="actions"><button class="btn" id="doImport">開始匯入</button></div></div>
+    <div class="card"><b>或貼上內容</b><p class="hint">把題目檔或備份的文字直接貼在這裡（例如從另一台裝置複製過來的）。</p>
+    <textarea id="pasteBox" placeholder="貼上 PSY_IMPORT([...]) 或備份 JSON"></textarea>
+    <div class="actions"><button class="btn" id="doPaste">匯入貼上的內容</button></div></div>
     <div class="card"><b>題目檔範例</b>
     <pre id="sample">${esc(SAMPLE)}</pre>
     <div class="actions"><button class="btn ghost" id="copySample">複製範例</button><button class="btn ghost" id="dlSample">下載範例檔</button></div>
     <p class="hint">欄位：type（past＝考古題／normal＝非考古題，省略時有年分或校名就視為考古題）、subject（考科）、year、school、qtype、score、question（必填）。也可選填 correct（正解）、star（true／false）。中文欄位名（考科、年分、校名、題型、分數、題目）同樣可用。重複的題目若原本沒有考科而檔案裡有，會自動補上考科。</p></div>`;
+  }else if(importTab==='export'){
+    const n=DB.questions.length, sv=DB.questions.filter(q=>q.saved).length;
+    body=`<div class="card"><b>匯出全部題目</b><p class="hint">目前共 ${n} 題（已儲存 ${sv}、未儲存 ${n-sv}）。完整備份包含題目資訊、考科、作答內容、星號與儲存狀態。</p>
+    <div class="actions" style="flex-direction:column">
+      <button class="btn" id="exBackup">下載完整備份（.json）</button>
+      <button class="btn ghost" id="exShare">分享／傳送到其他裝置</button>
+      <button class="btn ghost" id="exCopy">複製備份文字</button>
+      <button class="btn ghost" id="exJS">只匯出題目內容（.js，不含作答）</button>
+    </div></div>
+    <div class="card"><b>在另一台裝置使用</b>
+    <p class="hint">1. 在這台裝置下載或分享備份檔。<br>2. 用 AirDrop、LINE、Email 或雲端硬碟把檔案傳到另一台。<br>3. 在另一台開啟 PSY_TEST →「匯入題目」→「JS 檔匯入」→ 選擇該檔案。<br><br>新裝置請直接匯入備份，不要先另外匯入題目檔，以免題目重複。題目資料只存在各裝置的瀏覽器裡，不會自動同步。兩台都有的題目，匯入時以最近修改的那一份為準；在某一台刪除的題目不會在另一台跟著刪除。</p></div>`;
   }else{
     body=`<div class="card"><div class="tabs"><button class="tab on" id="kPast" data-k="past">考古題</button><button class="tab" id="kNorm" data-k="normal">非考古題</button></div>
     <label class="f" style="margin-top:0">考科</label><input id="m_subject" list="dl_msub" placeholder="例：心理測驗與統計"><datalist id="dl_msub">${[...new Set(DB.questions.map(x=>x.subject).filter(Boolean))].map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
@@ -242,7 +256,7 @@ function view_import(){
     <label class="f">題目</label><textarea id="m_text" placeholder="輸入題目內容"></textarea>
     <div class="actions"><button class="btn" id="addManual">新增題目</button></div></div>`;
   }
-  return page('匯入題目','home',tabs+body);
+  return page('匯入／匯出題目','home',tabs+body);
 }
 
 function view_browse(){
@@ -289,7 +303,7 @@ window.addEventListener('hashchange',render);
 function collect(q){document.querySelectorAll('textarea[data-f]').forEach(t=>q[t.dataset.f]=t.value.trim());}
 function bindForm({q,mode}){
   document.querySelectorAll('textarea').forEach(t=>{const fit=()=>{t.style.height='auto';t.style.height=Math.max(84,t.scrollHeight+2)+'px';};t.addEventListener('input',fit);fit();});
-  $('#star').onclick=e=>{q.star=!q.star;persist();e.currentTarget.classList.toggle('on',q.star);e.currentTarget.textContent=q.star?'★':'☆';};
+  $('#star').onclick=e=>{q.star=!q.star;q.updatedAt=Date.now();persist();e.currentTarget.classList.toggle('on',q.star);e.currentTarget.textContent=q.star?'★':'☆';};
   $('#save').onclick=()=>saveQ(q,mode);
   const ei=$('#editInfo');if(ei)ei.onclick=()=>{collect(q);editFrom=location.hash.replace(/^#\/?/,'')||'practice';go('edit/'+q.id);};
   const sk=$('#skip');if(sk)sk.onclick=()=>skip(q);
@@ -328,6 +342,7 @@ PSY_IMPORT([
     question: "認知失調（cognitive dissonance）"
   }
 ]);`;
+const isFull=o=>!!(o&&typeof o==='object'&&o.id&&typeof o.saved==='boolean');
 function norm(o){
   if(!o||typeof o!=='object')return null;
   const g=(...k)=>{for(const x of k)if(o[x]!=null&&o[x]!=='')return o[x];return '';};
@@ -336,29 +351,73 @@ function norm(o){
   const t=String(g('type','kind','類型')).toLowerCase();
   const past=t?/past|exam|考古/.test(t):!!(year||school||score);
   const now=Date.now();
-  return {id:uid(),kind:past?'past':'normal',subject,year:past?year:'',school:past?school:'',score:past?score:'',qtype:String(g('qtype','題型')),text,
+  const q={id:uid(),kind:past?'past':'normal',subject,year:past?year:'',school:past?school:'',score:past?score:'',qtype:String(g('qtype','題型')),text,
     saved:false,star:g('star','星號')===true,thought:'',concept:'',answer:String(g('answer','回答')),correct:String(g('correct','正解')),createdAt:now};
+  if(isFull(o)){
+    const S=v=>v==null?'':String(v), N=v=>Number(v)||0;
+    Object.assign(q,{id:String(o.id),year:S(o.year),school:S(o.school),score:S(o.score),saved:o.saved,star:!!o.star,
+      thought:S(o.thought),concept:S(o.concept),answer:S(o.answer),correct:S(o.correct),
+      savedAt:N(o.savedAt)||undefined,createdAt:N(o.createdAt)||now,updatedAt:N(o.updatedAt)||undefined});
+  }
+  return q;
 }
 const dupKey=q=>[q.kind,q.year,q.school,q.qtype,q.text].join('|');
+const stamp=q=>q.updatedAt||q.savedAt||0;
 function addMany(arr){
-  const map=new Map(DB.questions.map(q=>[dupKey(q),q]));let add=0,dup=0,bad=0,upd=0;
-  for(const o of arr){const q=norm(o);if(!q){bad++;continue;}const k=dupKey(q),ex=map.get(k);
-    if(ex){dup++;if(!ex.subject&&q.subject){ex.subject=q.subject;upd++;}continue;}
-    map.set(k,q);DB.questions.push(q);add++;}
-  persist();return {add,dup,bad,upd};
-}
-async function importFiles(files){
-  let tot={add:0,dup:0,bad:0,upd:0};
-  for(const f of files){
-    let txt=await f.text();let arr=[];
-    txt=txt.replace(/^\s*```.*$/gm,'').replace(/\[cite:[^\]]*\]/g,'');
-    try{const j=JSON.parse(txt);arr=Array.isArray(j)?j:(Array.isArray(j.questions)?j.questions:[]);}
-    catch(_){try{new Function('PSY_IMPORT',txt)(a=>{if(Array.isArray(a))arr=arr.concat(a);});}catch(e){toast(f.name+' 讀取失敗：'+e.message);return;}}
-    const r=addMany(arr);tot.add+=r.add;tot.dup+=r.dup;tot.bad+=r.bad;tot.upd+=r.upd;
+  const byId=new Map(DB.questions.map(q=>[q.id,q])), byKey=new Map(DB.questions.map(q=>[dupKey(q),q]));
+  let add=0,dup=0,bad=0,upd=0,fill=0;
+  for(const o of arr){
+    const q=norm(o);if(!q){bad++;continue;}
+    const full=isFull(o), ex=(full&&byId.get(q.id))||byKey.get(dupKey(q));
+    if(ex){
+      if(full){if(stamp(q)>stamp(ex)){Object.assign(ex,q,{id:ex.id});upd++;}else dup++;}
+      else{dup++;if(!ex.subject&&q.subject){ex.subject=q.subject;fill++;}}
+      continue;
+    }
+    byId.set(q.id,q);byKey.set(dupKey(q),q);DB.questions.push(q);add++;
   }
-  alert(`匯入完成\n新增：${tot.add} 題\n重複略過：${tot.dup} 題${tot.upd?`（其中 ${tot.upd} 題補上了考科）`:''}\n格式不符：${tot.bad} 題`);
+  persist();return {add,dup,bad,upd,fill};
 }
-const dl=(name,text)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/javascript'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};
+function parseText(txt){
+  txt=txt.replace(/^\s*```.*$/gm,'').replace(/\[cite:[^\]]*\]/g,'');
+  let arr=[];
+  try{const j=JSON.parse(txt);arr=Array.isArray(j)?j:(j&&Array.isArray(j.questions)?j.questions:[]);}
+  catch(_){new Function('PSY_IMPORT',txt)(a=>{if(Array.isArray(a))arr=arr.concat(a);});}
+  return arr;
+}
+function reportImport(t){
+  alert(`匯入完成\n新增：${t.add} 題${t.upd?`\n以較新的備份更新：${t.upd} 題`:''}\n重複略過：${t.dup} 題${t.fill?`（其中 ${t.fill} 題補上了考科）`:''}\n格式不符：${t.bad} 題`);
+}
+const sumTot=(t,r)=>{for(const k of ['add','dup','bad','upd','fill'])t[k]+=r[k];};
+async function importFiles(files){
+  const tot={add:0,dup:0,bad:0,upd:0,fill:0};
+  for(const f of files){
+    let arr;try{arr=parseText(await f.text());}catch(e){toast(f.name+' 讀取失敗：'+e.message);return;}
+    sumTot(tot,addMany(arr));
+  }
+  reportImport(tot);
+}
+function importPasted(txt){
+  if(!txt.trim()){toast('請先貼上內容');return;}
+  let arr;try{arr=parseText(txt);}catch(e){toast('讀取失敗：'+e.message);return;}
+  const tot={add:0,dup:0,bad:0,upd:0,fill:0};sumTot(tot,addMany(arr));reportImport(tot);
+}
+
+/* ---------- 匯出 ---------- */
+const ymd=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+const backupText=()=>JSON.stringify({app:'PSY_TEST',version:2,exportedAt:new Date().toISOString(),questions:DB.questions});
+const backupName=()=>`PSY_TEST_備份_${ymd()}.json`;
+function questionsJS(){
+  const items=DB.questions.map(q=>{
+    const o={type:q.kind==='past'?'past':'normal'};
+    if(q.subject)o.subject=q.subject;
+    if(q.kind==='past'){if(q.year)o.year=q.year;if(q.school)o.school=q.school;if(q.score)o.score=q.score;}
+    if(q.qtype)o.qtype=q.qtype;
+    o.question=q.text;return o;
+  });
+  return '// PSY_TEST 題目檔（僅題目內容，不含作答）\nPSY_IMPORT('+JSON.stringify(items,null,2)+');\n';
+}
+const dl=(name,text,type)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:type||'text/javascript'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};
 
 /* ---------- 事件 ---------- */
 let manualKind='past';
@@ -385,6 +444,20 @@ document.addEventListener('click',e=>{
     if(!confirm(v?`將目前列表的 ${n} 題考科設為「${v}」？`:`清除目前列表 ${n} 題的考科？`))return;
     browseList.forEach(q=>{q.subject=v;q.updatedAt=Date.now();});persist();toast(`已更新 ${n} 題`);fillBrowse();return;
   }
+  if(t.id==='exBackup'||t.id==='exShare'||t.id==='exCopy'||t.id==='exJS'){
+    if(!DB.questions.length){toast('目前沒有題目可匯出');return;}
+    if(t.id==='exBackup'){dl(backupName(),backupText(),'application/json');toast('已下載備份檔');}
+    else if(t.id==='exJS'){dl(`PSY_TEST_題目_${ymd()}.js`,questionsJS());toast('已下載題目檔');}
+    else if(t.id==='exCopy'){navigator.clipboard&&navigator.clipboard.writeText(backupText()).then(()=>toast('已複製備份文字'),()=>toast('複製失敗，請改用下載'));}
+    else{
+      try{const f=new File([backupText()],backupName(),{type:'application/json'});
+        if(navigator.canShare&&navigator.canShare({files:[f]}))navigator.share({files:[f],title:'PSY_TEST 備份'}).catch(()=>{});
+        else toast('此裝置不支援分享，請改用下載或複製');}
+      catch(err){toast('此裝置不支援分享，請改用下載或複製');}
+    }
+    return;
+  }
+  if(t.id==='doPaste'){importPasted($('#pasteBox').value);return;}
   if(t.id==='doImport'){const f=$('#file').files;if(!f.length){toast('請先選擇檔案');return;}importFiles([...f]);return;}
   if(t.id==='copySample'){navigator.clipboard&&navigator.clipboard.writeText(SAMPLE).then(()=>toast('已複製範例'),()=>toast('複製失敗，請手動選取'));return;}
   if(t.id==='dlSample'){dl('PSY_TEST_題目範例.js',SAMPLE);return;}
